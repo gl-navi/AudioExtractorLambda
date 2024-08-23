@@ -110,8 +110,8 @@ def define_keys(file_base_name: str) -> tuple:
         tuple: The keys for the MP3 file and the new video file.
     """
     new_directory = f"data/{file_base_name}/"
-    mp3_key = f"data/{file_base_name}/{file_base_name}_audio.mp3"
-    new_video_key = f"{new_directory}{file_base_name}.mp4"
+    mp3_key = f"data/{file_base_name}/audio.mp3"
+    new_video_key = f"{new_directory}video.mp4"
     return mp3_key, new_video_key
 
 
@@ -253,6 +253,7 @@ def lambda_handler(event, context):
 
         # Extract base name and define new keys for the new directories
         file_base_name = extract_base_name(key)
+
         mp3_key, new_video_key = define_keys(file_base_name)
 
         # Get the video file from S3
