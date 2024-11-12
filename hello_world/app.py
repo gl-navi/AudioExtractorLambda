@@ -3,6 +3,9 @@ import json
 import os
 import subprocess
 import boto3
+import re
+import time
+
 from pydub import AudioSegment
 from botocore.exceptions import ClientError
 
@@ -99,7 +102,25 @@ def extract_base_name(key: str) -> str:
     return os.path.splitext(os.path.basename(key))[0]
 
 
-def define_keys(file_base_name: str) -> tuple:
+def extract_num_speakers(key: str) -> int:
+    """
+    Extract the number of speakers (ns) from the S3 object key.
+
+    Args:
+        key (str): The S3 object key.
+
+    Returns:
+        int: The number of speakers.
+    """
+    base_name = os.path.splitext(os.path.basename(key))[0]
+    match = re.search(r'_ns_(\d+)', base_name)
+
+    if match:
+        return int(match.group(1))
+    raise ValueError("Number of speakers (ns) not found in the filename.")
+
+
+def define_keys(file_base_name: str, numberOfSpeakers: int) -> tuple:
     """
     Define the new directory and file keys for the MP3 and video files.
 
@@ -110,7 +131,7 @@ def define_keys(file_base_name: str) -> tuple:
         tuple: The keys for the MP3 file and the new video file.
     """
     new_directory = f"data/{file_base_name}/"
-    mp3_key = f"data/{file_base_name}/audio.mp3"
+    mp3_key = f"data/{file_base_name}/audio_{numberOfSpeakers}.mp3"
     new_video_key = f"{new_directory}video.mp4"
     return mp3_key, new_video_key
 
@@ -162,6 +183,7 @@ def move_original_video_in_s3(bucket: str, key: str, new_video_key: str):
         Key=new_video_key
     )
     s3Client.delete_object(Bucket=bucket, Key=key)
+
 
 def extract_event_details(event: dict) -> tuple:
     """
@@ -247,14 +269,19 @@ def lambda_handler(event, context):
         dict: A response object containing the status of the operation.
     """
 
+    start_time = time.time()  # Record the start time
+
     try:
         # Extract bucket name and key from the event
         bucket, key = extract_event_details(event)
 
+        print(f"Im wokring with >bucket {bucket} and key{key}")
         # Extract base name and define new keys for the new directories
-        file_base_name = extract_base_name(key)
+        file_base_name = extract_base_name(key=key)
 
-        mp3_key, new_video_key = define_keys(file_base_name)
+        numberOfSpeakers = extract_num_speakers(key=key)
+
+        mp3_key, new_video_key = define_keys(file_base_name=file_base_name, numberOfSpeakers=numberOfSpeakers)
 
         # Get the video file from S3
         video_file_bytes = get_object_from_s3(bucket, key)
@@ -269,6 +296,10 @@ def lambda_handler(event, context):
 
         # Move the original video file
         move_original_video_in_s3(bucket, key, new_video_key)
+
+        elapsed_time = time.time() - start_time
+        elapsed_minutes = elapsed_time / 60
+        print(f"Total time taken: {elapsed_minutes:.2f} minutes")
 
         return {
             "statusCode": 200,
