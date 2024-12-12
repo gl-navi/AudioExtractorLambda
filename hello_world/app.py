@@ -164,7 +164,7 @@ def save_audio_to_s3(bucket: str, mp3_key: str, audio_buffer: io.BytesIO):
         Bucket=bucket,
         Key=mp3_key,
         Body=audio_buffer,
-        ContentType='audio/mpeg'
+        ContentType='audio/wav'
     )
 
 
