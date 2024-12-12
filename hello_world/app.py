@@ -120,7 +120,7 @@ def extract_num_speakers(key: str) -> int:
     raise ValueError("Number of speakers (ns) not found in the filename.")
 
 
-def define_keys(file_base_name: str, numberOfSpeakers: int) -> tuple:
+def define_keys(file_base_name: str) -> tuple:
     """
     Define the new directory and file keys for the MP3 and video files.
 
@@ -131,9 +131,9 @@ def define_keys(file_base_name: str, numberOfSpeakers: int) -> tuple:
         tuple: The keys for the MP3 file and the new video file.
     """
     new_directory = f"data/{file_base_name}/"
-    mp3_key = f"data/{file_base_name}/audio_{numberOfSpeakers}.mp3"
+    wav_key = f"data/{file_base_name}/audio.wav"
     new_video_key = f"{new_directory}video.mp4"
-    return mp3_key, new_video_key
+    return wav_key, new_video_key
 
 
 def get_object_from_s3(bucket: str, key: str) -> bytes:
@@ -221,23 +221,23 @@ def pydub_audiosegment2buffer(segment: AudioSegment, audio_format: str) -> io.By
     return buffer
 
 
-def get_audio_buffer_from_mp4_bytes(audio_file_bytes: bytes, audio_format: str) -> io.BytesIO:
+def get_audio_buffer_from_mp4_bytes(audio_file_bytes: bytes, audio_format: str = "wav") -> io.BytesIO:
     """
     Encode MP4 audio data (in bytes) to a specified audio format and return it as a bytes buffer.
 
     This function reads MP4-encoded audio data from a bytes object, converts it to the desired
-    audio format (e.g., MP3), and returns the result as an in-memory bytes buffer.
+    audio format (default is "wav"), and returns the result as an in-memory bytes buffer.
 
     Args:
         audio_file_bytes (bytes): The input MP4 audio data in bytes.
-        audio_format (str): The target audio format for the conversion (e.g., "mp3").
+        audio_format (str): The target audio format for the conversion (default: "wav").
 
     Returns:
         io.BytesIO: A bytes buffer containing the audio data in the specified format.
 
     Example:
-        mp3_buffer = get_audio_buffer_from_mp4_bytes(mp4_data, "mp3")
-        # Now `mp3_buffer` contains the MP3-encoded audio data.
+        wav_buffer = get_audio_buffer_from_mp4_bytes(mp4_data)
+        # Now `wav_buffer` contains the WAV-encoded audio data.
     """
 
     # Load the MP4 audio data from the bytes object into a pydub AudioSegment
@@ -275,24 +275,22 @@ def lambda_handler(event, context):
         # Extract bucket name and key from the event
         bucket, key = extract_event_details(event)
 
-        print(f"Im wokring with >bucket {bucket} and key{key}")
+        # print(f"Im working with >bucket {bucket} and key{key}")
         # Extract base name and define new keys for the new directories
         file_base_name = extract_base_name(key=key)
 
-        numberOfSpeakers = extract_num_speakers(key=key)
-
-        mp3_key, new_video_key = define_keys(file_base_name=file_base_name, numberOfSpeakers=numberOfSpeakers)
+        wav_key, new_video_key = define_keys(file_base_name=file_base_name)
 
         # Get the video file from S3
         video_file_bytes = get_object_from_s3(bucket, key)
 
         # Extract audio and save it to S3
-        audio_buffer = get_audio_buffer_from_mp4_bytes(video_file_bytes, "mp3")
+        audio_buffer = get_audio_buffer_from_mp4_bytes(video_file_bytes, "wav")
 
         if not audio_buffer:
             raise ValueError("Audio buffer could not be created from MP4 bytes.")
 
-        save_audio_to_s3(bucket, mp3_key, audio_buffer)
+        save_audio_to_s3(bucket, wav_key, audio_buffer)
 
         # Move the original video file
         move_original_video_in_s3(bucket, key, new_video_key)
@@ -304,7 +302,7 @@ def lambda_handler(event, context):
         return {
             "statusCode": 200,
             "body": json.dumps({
-                "message": f"Audio file successfully extracted and saved to {mp3_key} in {bucket}.",
+                "message": f"Audio file successfully extracted and saved to {wav_key} in {bucket}.",
             }),
         }
 
