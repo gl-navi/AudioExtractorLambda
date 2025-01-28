@@ -43,11 +43,11 @@ def lambda_handler(event, context):
 
         if bucket == voice_extraction_bucket:
             # Get the video file from S3
+            print(f"inside voice_extraction_bucket woth bucket: {bucket} and key: {key}")
+
             video_file_bytes = get_object_from_s3(bucket, key)
 
-            print(f"video_file_bytes {video_file_bytes}")
-
-            print(f"${voice_extraction_bucket} bucket operation")
+            # print(f"video_file_bytes {video_file_bytes}")
 
             # Extract audio and save it to S3
             audio_buffer = get_audio_buffer_from_mp4_bytes(video_file_bytes, "wav")
@@ -57,9 +57,11 @@ def lambda_handler(event, context):
 
             wav_key = f"{directory_name}/audio.wav"
 
+            print(f"Saving audio file: {wav_key}")
+
             save_audio_to_s3(bucket, wav_key, audio_buffer)
 
-            print("and here")
+            print("file saved to s3")
 
         elif bucket == jw_pipeline_bucket:
 

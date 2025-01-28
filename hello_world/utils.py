@@ -157,7 +157,6 @@ def get_object_from_s3(bucket: str, key: str) -> bytes:
     Returns:
         bytes: The content of the S3 object.
     """
-    print(f"Bucket {bucket} key {key}")
 
     try:
         response = s3Client.get_object(Bucket=bucket, Key=key)
@@ -176,6 +175,7 @@ def save_audio_to_s3(bucket: str, wav_key: str, audio_buffer: io.BytesIO):
         wav_key (str): The key for the MP3 file.
         audio_buffer (io.BytesIO): The bytes buffer containing the MP3 audio data.
     """
+    print(f"Saving audio file to {bucket}/{wav_key}")
     s3Client.put_object(
         Bucket=bucket,
         Key=wav_key,
@@ -229,6 +229,7 @@ def extract_event_details(event: dict) -> tuple:
     key = event["Records"][0]["s3"]["object"]["key"]
     decoded_key = urllib.parse.unquote(key)  # Decode the URL-encoded key
     return bucket, decoded_key
+
 
 def pydub_audiosegment2buffer(segment: AudioSegment, audio_format: str) -> io.BytesIO:
     """
