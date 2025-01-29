@@ -1,10 +1,16 @@
 import os
 import subprocess
+from typing import Tuple
+
 import boto3
 import re
 import io
 from pydub import AudioSegment
 import urllib.parse
+import json
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 
 s3Client = boto3.client("s3")
 
@@ -201,20 +207,6 @@ def move_original_video_in_s3(bucket: str, key: str, new_video_key: str):
     s3Client.delete_object(Bucket=bucket, Key=key)
 
 
-# def extract_event_details(event: dict) -> tuple:
-#     """
-#     Extract the bucket name and key from the S3 event.
-#
-#     Args:
-#         event (dict): The event data containing details of the uploaded video file.
-#
-#     Returns:
-#         tuple: The bucket name and the key of the S3 object.
-#     """
-#     bucket = event["Records"][0]["s3"]["bucket"]["name"]
-#     key = event["Records"][0]["s3"]["object"]["key"]
-#     return bucket, key
-
 def extract_event_details(event: dict) -> tuple:
     """
     Extract the bucket name and key from the S3 event, and decode the key.
@@ -279,3 +271,78 @@ def get_audio_buffer_from_mp4_bytes(audio_file_bytes: bytes, audio_format: str =
 
     # Return the buffer containing the audio data
     return sound_buffer
+
+
+def create_event_json(event_name, known_number_of_speakers, known_participants_jw_ids, pipeline_step, pipeline_status):
+    """
+    Creates a JSON object with event details and metadata that will be saved to MongoDB.
+
+    Args:
+        event_name (str): The original name of the uploaded resource/video.
+        known_number_of_speakers (int): Total number of speakers identified.
+        pipeline_status (str): Current status of the processing pipeline.
+
+    Returns:
+        dict: A JSON object with event details and metadata.
+    """
+
+    # Set the local timezone (Japan Standard Time in this case)
+    local_timezone = ZoneInfo("Asia/Tokyo")
+    # Get the current timestamp in the local timezone
+    current_timestamp = datetime.now(local_timezone).isoformat()
+
+    # Create the JSON structure
+    event_json = {
+        "event_details": {
+            "event_name": event_name,
+            "known_participants_jw_ids": known_participants_jw_ids,  # Placeholder for participant JW IDs
+            "known_number_of_speakers": known_number_of_speakers,
+            "pipeline_step": pipeline_step,
+            "pipeline_status": pipeline_status
+        },
+        "metadata": {
+            "created_at": current_timestamp,
+            "updated_at": current_timestamp  # Initially same as created_at
+        }
+    }
+
+    return event_json
+
+
+def fetch_video_manifest_details(bucket: str, dir_name: str, source_dir: str) -> int | Tuple[int, list]:
+    """
+    Fetch details from the video manifest file, including the number of speakers and optional parms.
+
+    Args:
+        bucket (str): S3 bucket name.
+        directory_name (str): Directory containing the manifest file.
+
+    Returns:
+        tuple: (number_of_speakers, onset_param), where onset_param is None if not present.
+        :param bucket:
+        :param source_dir:
+        :param dir_name:
+    """
+
+    try:
+        manifest_key = f"{dir_name}/{source_dir}/videoManifest.json"
+
+        response = s3Client.get_object(Bucket=bucket, Key=manifest_key)
+
+        manifest_content = json.loads(response["Body"].read().decode('utf-8'))
+
+        # Extract the number_of_speakers
+        number_of_speakers = manifest_content.get("number_of_speakers")
+
+        known_participants_jw_ids = manifest_content.get("jwids")
+
+        if not isinstance(number_of_speakers, int):
+            raise ValueError("'number_of_speakers' must be an integer.")
+
+        return number_of_speakers, known_participants_jw_ids
+
+    except s3Client.exceptions.NoSuchKey:
+        raise FileNotFoundError(f"Manifest file not found at {manifest_key}")
+
+    except json.JSONDecodeError:
+        raise ValueError("Manifest file is not a valid JSON document.")
