@@ -28,7 +28,6 @@ def lambda_handler(event, context):
         dict: A response object containing the status of the operation.
     """
 
-
     start_time = time.time()  # Record the start time
     voice_extraction_bucket = "voice-extraction"
     jw_pipeline_bucket = "jw-pipeline"
@@ -100,18 +99,18 @@ def lambda_handler(event, context):
         move_original_video_in_s3(bucket, key, new_video_key)
 
         # Fetch parameters from the video manifest
-        number_of_speakers, known_participants_jw_ids = fetch_video_manifest_details(
+        number_of_speakers, known_participants_jw_ids, result_email = fetch_video_manifest_details(
             jw_pipeline_bucket,
             directory_name,
             file_base_name)
 
-        result_json = create_event_json(event_name=file_base_name, known_participants_jw_ids=known_participants_jw_ids,
-                                        known_number_of_speakers=number_of_speakers,
-                                        pipeline_step="audio_extraction", pipeline_status="not_completed")
+        result_json = create_event_json(event_name=file_base_name, known_number_of_speakers=number_of_speakers,
+                                        result_email=result_email, known_participants_jw_ids=known_participants_jw_ids,
+                                        last_pipeline_step="audio_extraction", pipeline_completed=False)
 
         # print(json.dumps(result_json, indent=4))
 
-        save_metrics_to_documentdb(mongodb_APIgateway_uri=mongodb_APIgateway_uri, db_name="jw-mongodb-db",
+        save_metrics_to_documentdb(mongodb_APIgateway_uri=mongodb_APIgateway_uri, db_name="japan-wing-document-db",
                                    collection_name="events",
                                    event_json=result_json)
 
