@@ -28,6 +28,7 @@ def lambda_handler(event, context):
         dict: A response object containing the status of the operation.
     """
 
+
     start_time = time.time()  # Record the start time
     voice_extraction_bucket = "voice-extraction"
     jw_pipeline_bucket = "jw-pipeline"
