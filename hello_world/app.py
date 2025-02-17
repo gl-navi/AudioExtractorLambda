@@ -2,9 +2,9 @@ import json
 import os
 import time
 
-from utils import check_ffmpeg, check_ffprobe, extract_base_directory, extract_base_name, extract_num_speakers, \
+from utils import check_ffmpeg, check_ffprobe, extract_base_directory, extract_base_name, \
     extract_event_details, get_object_from_s3, save_audio_to_s3, move_original_video_in_s3, \
-    get_audio_buffer_from_mp4_bytes, define_keys, create_event_json, fetch_video_manifest_details
+    get_audio_buffer_from_mp4_bytes, define_keys, get_mongo_db_event_json, fetch_video_manifest_details
 from document_db_utils import save_metrics_to_documentdb
 from botocore.exceptions import ClientError
 
@@ -29,8 +29,6 @@ def lambda_handler(event, context):
     """
 
     start_time = time.time()  # Record the start time
-    voice_extraction_bucket = "voice-extraction"
-    jw_pipeline_bucket = "jw-pipeline"
 
     mongodb_APIgateway_uri = os.getenv("documentDB_url")
 
@@ -43,75 +41,32 @@ def lambda_handler(event, context):
         file_base_name = extract_base_name(key=key)
         directory_name = extract_base_directory(key=key)
 
-        if bucket == voice_extraction_bucket:
-
-            # Get the video file from S3
-
-            print(f"inside voice_extraction_bucket woth bucket: {bucket} and key: {key}")
-
-            video_file_bytes = get_object_from_s3(bucket, key)
-
-            print(f"video_file_bytes {video_file_bytes}")
-
-            # Extract audio and save it to S3
-            audio_buffer = get_audio_buffer_from_mp4_bytes(video_file_bytes, "wav")
-
-            if not audio_buffer:
-                raise ValueError(f"Audio buffer could not be created from MP4 bytes for {voice_extraction_bucket}.")
-
-            wav_key = f"{directory_name}/audio.wav"
-
-            print(f"Saving audio file: {wav_key}")
-
-            save_audio_to_s3(bucket, wav_key, audio_buffer)
-
-            print("file saved to s3")
-
-            return {
-                "statusCode": 200,
-                "body": json.dumps({
-                    "message": f"voice_extraction_bucket operation: Audio file successfully extracted and saved to {wav_key} in {bucket}.",
-                }),
-            }
-
-        print(f"${jw_pipeline_bucket} bucket operation.")
-
-        wav_key, new_video_key = define_keys(file_base_name=file_base_name)
-
-        print(f"directory_name {directory_name}")
-
-        print(f"file_base_name {file_base_name}")
-
-        print(f"wav_key {wav_key} and new_video_key {new_video_key}")
-
-        # Get the video file from S3
         video_file_bytes = get_object_from_s3(bucket, key)
 
         # Extract audio and save it to S3
         audio_buffer = get_audio_buffer_from_mp4_bytes(video_file_bytes, "wav")
 
         if not audio_buffer:
-            raise ValueError(f"Audio buffer could not be created from MP4 bytes for {jw_pipeline_bucket}.")
+            raise ValueError(f"Audio buffer could not be created from MP4 bytes for {bucket}.")
+
+        wav_key = f"{directory_name}/audio.wav"
 
         save_audio_to_s3(bucket, wav_key, audio_buffer)
+
+        wav_key, new_video_key = define_keys(file_base_name=file_base_name)
 
         # Move the original video file
         move_original_video_in_s3(bucket, key, new_video_key)
 
         # Fetch parameters from the video manifest
-        number_of_speakers, known_participants_jw_ids, result_email = fetch_video_manifest_details(
-            jw_pipeline_bucket,
-            directory_name,
-            file_base_name)
+        video_manifest = fetch_video_manifest_details(
+            bucket=bucket,
+            source_dir=file_base_name)
 
-        result_json = create_event_json(event_name=file_base_name, known_number_of_speakers=number_of_speakers,
-                                        result_email=result_email, known_participants_jw_ids=known_participants_jw_ids,
-                                        last_pipeline_step="audio_extraction", pipeline_completed=False)
+        result_json = get_mongo_db_event_json(event_name=file_base_name, video_manifest=video_manifest)
 
-        # print(json.dumps(result_json, indent=4))
-
-        save_metrics_to_documentdb(mongodb_APIgateway_uri=mongodb_APIgateway_uri, db_name="japan-wing-document-db",
-                                   collection_name="events",
+        save_metrics_to_documentdb(mongodb_APIgateway_uri=mongodb_APIgateway_uri, db_name="gl-document-db",
+                                   collection_name="gl-pipeline-events",
                                    event_json=result_json)
 
         elapsed_time = time.time() - start_time

@@ -145,8 +145,8 @@ def define_keys(file_base_name: str) -> tuple:
     Returns:
         tuple: The keys for the MP3 file and the new video file.
     """
-    new_directory = f"data/{file_base_name}/"
-    wav_key = f"data/{file_base_name}/audio.wav"
+    new_directory = f"{file_base_name}/"
+    wav_key = f"{file_base_name}/audio.wav"
     new_video_key = f"{new_directory}video.mp4"
     return wav_key, new_video_key
 
@@ -181,6 +181,7 @@ def save_audio_to_s3(bucket: str, wav_key: str, audio_buffer: io.BytesIO):
         audio_buffer (io.BytesIO): The bytes buffer containing the MP3 audio data.
     """
     print(f"Saving audio file to {bucket}/{wav_key}")
+
     s3Client.put_object(
         Bucket=bucket,
         Key=wav_key,
@@ -272,51 +273,175 @@ def get_audio_buffer_from_mp4_bytes(audio_file_bytes: bytes, audio_format: str =
     return sound_buffer
 
 
-def create_event_json(event_name, known_number_of_speakers, result_email, known_participants_jw_ids, last_pipeline_step,
-                      pipeline_completed):
+def get_job_type(video_manifest: dict) -> dict:
     """
-    Creates a JSON object with event details and metadata that will be saved to MongoDB.
+    Extracts the jobType from the video manifest content.
 
     Args:
-        event_name (str): The original name of the uploaded resource/video.
-        known_number_of_speakers (int): Total number of speakers identified.
-        pipeline_status (str): Current status of the processing pipeline.
+        video_manifest (dict): The video manifest as a dictionary.
 
     Returns:
-        dict: A JSON object with event details and metadata.
-        :param known_number_of_speakers:  known number of speakers in the video.
-        :param event_name:  name of the event which in this case is the video name.
-        :param last_pipeline_step: last completed step in the pipeline.
-        :param pipeline_completed: status of the pipeline completed or not.
-        :param known_participants_jw_ids:  list of known participants jw_ids.
-        :param result_email: email address to send the result from the pipeline.
+        dict: The "jobType" object from the manifest.
     """
+    try:
+        # Get the 'jobType' field from the manifest content
+        job_type = video_manifest.get("jobType", {})
 
-    # Set the local timezone (Japan Standard Time in this case)
-    local_timezone = ZoneInfo("Asia/Tokyo")
-    # Get the current timestamp in the local timezone
-    current_timestamp = datetime.now(local_timezone).isoformat()
+        return job_type
 
-    # Create the JSON structure
-    event_json = {
-        "event_details": {
-            "event_name": event_name,
-            "known_participants_jw_ids": known_participants_jw_ids,
-            "known_number_of_speakers": known_number_of_speakers,
-        },
-        "metadata": {
-            "result_email": result_email,
-            "last_pipeline_step": last_pipeline_step,
-            "pipeline_completed": pipeline_completed,
-            "created_at": current_timestamp,
-            "updated_at": current_timestamp
+    except Exception as e:
+        raise RuntimeError(f"Unexpected error: {str(e)}")
+
+
+def create_mongo_db_event_json(event_name, job_type, video_manifest):
+    """
+        Creates a structured JSON event document for MongoDB based on job type and video manifest data.
+
+        This function dynamically constructs an event JSON object based on whether the job type
+        includes "analysis" and/or "voiceExtraction". It extracts relevant details from the video manifest
+        and organizes them accordingly.
+
+        Args:
+            event_name (str): The name of the event being processed.
+            job_type (dict): A dictionary indicating which job types are enabled (e.g., {"analysis": True, "voiceExtraction": False}).
+            video_manifest (dict): The video manifest containing metadata such as known participants, speaker count, and email.
+
+        Returns:
+            dict: A structured JSON event object containing event details and metadata.
+                  Returns None if an error occurs.
+
+        Example:
+            Input:
+                event_name = "Test_Event"
+                job_type = {"analysis": True, "voiceExtraction": True}
+                video_manifest = {
+                    "jwids": ["JW123", "JW456"],
+                    "number_of_speakers": 2,
+                    "result_email": "example@gmail.com",
+                    "unknown_speaker_jwid": "UNK001",
+                    "known_speaker_jwid": "JW123"
+                }
+
+            Output:
+                {
+                    "event_details": {
+                        "event_name": "Test_Event",
+                        "jobType": ["analysis", "voice_extraction"],
+                        "known_participants_jw_ids": ["JW123", "JW456"],
+                        "known_number_of_speakers": 2,
+                        "result_email": "example@gmail.com",
+                        "unknown_speaker_jwid": "UNK001",
+                        "known_speaker_jwid": "JW123"
+                    },
+                    "metadata": {
+                        "created_at": "2025-02-17T15:30:45.123+09:00",
+                        "updated_at": "2025-02-17T15:30:45.123+09:00"
+                    }
+                }
+        """
+    try:
+        # Set local timezone (Japan Standard Time)
+        local_timezone = ZoneInfo("Asia/Tokyo")
+        current_timestamp = datetime.now(local_timezone).isoformat()
+
+        # Initialize event structure
+        event_json = {
+            "event_details": {
+                "event_name": event_name,
+                "jobType": [],  # Will dynamically add job types
+            },
+            "metadata": {
+                "created_at": current_timestamp,
+                "updated_at": current_timestamp,
+            }
         }
-    }
 
-    return event_json
+        # If 'analysis' is enabled, add analysis-specific data
+        if job_type.get("analysis"):
+            event_json["event_details"]["jobType"].append("analysis")
+            event_json["event_details"]["known_participants_jw_ids"] = video_manifest.get("jwids", [])
+            event_json["event_details"]["known_number_of_speakers"] = video_manifest.get("number_of_speakers", None)
+            event_json["event_details"]["result_email"] = video_manifest.get("result_email", "")
+
+        # If 'voiceExtraction' is enabled, add voice extraction-specific data
+        if job_type.get("voiceExtraction"):
+            event_json["event_details"]["jobType"].append("voice_extraction")
+            event_json["event_details"]["unknown_speaker_jwid"] = video_manifest.get("unknown_speaker_jwid", "")
+            event_json["event_details"]["known_speaker_jwid"] = video_manifest.get("known_speaker_jwid", "")
+
+        return event_json
+
+    except Exception as e:
+        print(f"Error occurred while creating MongoDB event JSON: {str(e)}")
+        return None
 
 
-def fetch_video_manifest_details(bucket: str, dir_name: str, source_dir: str) -> tuple[int, Any, Any]:
+def get_mongo_db_event_json(event_name, video_manifest: dict):
+    """
+        Generates a MongoDB event JSON by extracting job type from the video manifest.
+
+        This function retrieves the job type from the video manifest and then calls
+        `create_mongo_db_event_json` to construct the event JSON.
+
+        Args:
+            event_name (str): The name of the event being processed.
+            video_manifest (dict): The video manifest containing metadata such as known participants,
+                                   speaker count, job type, and email.
+
+        Returns:
+            dict: A structured JSON event object containing event details and metadata.
+
+        Error Handling:
+            - If an exception occurs, it returns an error response with status code 500
+              and an error message.
+
+        Example:
+            Input:
+                event_name = "Test_Event"
+                video_manifest = {
+                    "jobType": {"analysis": True, "voiceExtraction": True},
+                    "jwids": ["JW123", "JW456"],
+                    "number_of_speakers": 2,
+                    "result_email": "example@gmail.com",
+                    "unknown_speaker_jwid": "UNK001",
+                    "known_speaker_jwid": "JW123"
+                }
+
+            Output:
+                {
+                    "event_details": {
+                        "event_name": "Test_Event",
+                        "jobType": ["analysis", "voice_extraction"],
+                        "known_participants_jw_ids": ["JW123", "JW456"],
+                        "known_number_of_speakers": 2,
+                        "result_email": "example@gmail.com",
+                        "unknown_speaker_jwid": "UNK001",
+                        "known_speaker_jwid": "JW123"
+                    },
+                    "metadata": {
+                        "created_at": "2025-02-17T15:30:45.123+09:00",
+                        "updated_at": "2025-02-17T15:30:45.123+09:00"
+                    }
+                }
+        """
+    try:
+
+        # Call the get_job_type function to fetch the job type from the manifest
+        job_type = get_job_type(video_manifest)
+
+        event_json = create_mongo_db_event_json(event_name=event_name, job_type=job_type, video_manifest=video_manifest)
+
+        return event_json
+
+    except Exception as e:
+        print(f"Error occurred while creating MongoDB event JSON: {str(e)}")
+        return {
+            "statusCode": 500,
+            "body": f"Error occurred: {str(e)}"
+        }
+
+
+def fetch_video_manifest_details(bucket: str, source_dir: str) -> dict:
     """
     Fetch details from the video manifest file, including the number of speakers and optional parms.
 
@@ -332,25 +457,14 @@ def fetch_video_manifest_details(bucket: str, dir_name: str, source_dir: str) ->
     """
 
     try:
-        manifest_key = f"{dir_name}/{source_dir}/videoManifest.json"
+
+        manifest_key = f"{source_dir}/videoManifest.json"
 
         response = s3Client.get_object(Bucket=bucket, Key=manifest_key)
 
         manifest_content = json.loads(response["Body"].read().decode('utf-8'))
 
-        # Extract the number_of_speakers
-        number_of_speakers = manifest_content.get("number_of_speakers")
-
-        result_email = manifest_content.get("result_email")
-
-        known_participants_jw_ids = manifest_content.get("jwids")
-
-        print(f"manifest_content >>> {manifest_content}")
-
-        if not isinstance(number_of_speakers, int):
-            raise ValueError("'number_of_speakers' must be an integer.")
-
-        return number_of_speakers, known_participants_jw_ids, result_email
+        return manifest_content
 
     except s3Client.exceptions.NoSuchKey:
         raise FileNotFoundError(f"Manifest file not found at {manifest_key}")
