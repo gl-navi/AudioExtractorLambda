@@ -51,6 +51,8 @@ def lambda_handler(event, context):
 
         wav_key = f"{directory_name}/audio.wav"
 
+        print(f"directory_name >>> {directory_name} file_base_name >>> {file_base_name}")
+
         save_audio_to_s3(bucket, wav_key, audio_buffer)
 
         wav_key, new_video_key = define_keys(file_base_name=file_base_name)
@@ -58,13 +60,13 @@ def lambda_handler(event, context):
         # Move the original video file
         move_original_video_in_s3(bucket, key, new_video_key)
 
-        # Fetch parameters from the video manifest
+        # # Fetch parameters from the video manifest
         video_manifest = fetch_video_manifest_details(
             bucket=bucket,
             source_dir=file_base_name)
-
+        #
         result_json = get_mongo_db_event_json(event_name=file_base_name, video_manifest=video_manifest)
-
+        #
         save_metrics_to_documentdb(mongodb_APIgateway_uri=mongodb_APIgateway_uri, db_name="gl-document-db",
                                    collection_name="gl-pipeline-events",
                                    event_json=result_json)
