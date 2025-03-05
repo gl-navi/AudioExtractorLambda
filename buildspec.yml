@@ -13,10 +13,9 @@ phases:
 
   build:
     commands:
-      - "echo Zipping Lambda function and AppSpec file"  # Prints a message indicating the start of the zipping process.
-      - "cp appspec.yml hello_world/appspec.yml"  # Copies `appspec.yml` into the `hello_world/` directory.
-      - "zip -r function.zip hello_world"  # Recursively zips the `hello_world/` directory into `function.zip`.
-      - "zip -g function.zip appspec.yml"  # Adds `appspec.yml` to `function.zip` without overwriting existing contents.
+      - "echo Zipping Lambda function and dependencies"
+      - "zip -r function.zip ."  # Zips everything in the root directory
+      - "zip -g function.zip appspec.yml"  # Adds `appspec.yml` to `function.zip`
 
   post_build:
     commands:

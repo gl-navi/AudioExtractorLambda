@@ -35,6 +35,7 @@ def lambda_handler(event, context):
     mongodb_APIgateway_uri = os.getenv("documentDB_url")
 
     try:
+        print(f"This is the new try")
 
         # Extract bucket name and key from the event
         bucket, key = extract_event_details(event)
