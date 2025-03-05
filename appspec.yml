@@ -1,0 +1,9 @@
+version: 0.0
+Resources:
+  - myLambdaFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+        Name: "video_to_audio_extractor_lambda_jw_pipeline_step_1"
+        Alias: "prod"
+        CurrentVersion: "{{CURRENT_VERSION}}"
+        TargetVersion: "{{TARGET_VERSION}}"
