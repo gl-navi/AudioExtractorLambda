@@ -108,7 +108,7 @@ def lambda_handler(event, context):
                                         result_email=result_email, known_participants_jw_ids=known_participants_jw_ids,
                                         last_pipeline_step="audio_extraction", pipeline_completed=False)
 
-        # print(json.dumps(result_json, indent=4))
+        print(json.dumps(result_json, indent=4))
 
         save_metrics_to_documentdb(mongodb_APIgateway_uri=mongodb_APIgateway_uri, db_name="japan-wing-document-db",
                                    collection_name="events",
