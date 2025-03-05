@@ -13,15 +13,23 @@ phases:
 
   build:
     commands:
+      - "echo Moving files out of hello_world to root..."
+      - "mv hello_world/* . || echo 'No files to move'"
+      # Moves all files inside hello_world to the root directory
+
+      - "echo Removing empty hello_world directory..."
+      - "rm -rf hello_world"
+      # Deletes the now-empty hello_world directory
+
       - "echo Zipping Lambda function and dependencies"
-      - "cd hello_world && zip -r ../function.zip . -x '*.git*' '.aws-sam/*' '.idea/*' 'events/*' 'tests/*'"
-      # Moves into `hello_world`, zips everything inside it WITHOUT keeping the directory itself
+      - "zip -r function.zip . -x '*.git*' '.aws-sam/*' '.idea/*' 'events/*' 'tests/*'"
+      # Zips everything in the root directory, excluding unnecessary files
+
       - "echo Ensuring function.zip was created..."
       - "[ -f function.zip ] && echo 'function.zip exists' || (echo 'Error: function.zip missing!' && exit 1)"
-      # Check if function.zip was created successfully, exit if missing
+
       - "echo Adding AppSpec file to function.zip..."
       - "zip -g function.zip appspec.yml || (echo 'Error: Failed to add appspec.yml' && exit 1)"
-        # Ensure AppSpec file is added properly
 
 
   post_build:
