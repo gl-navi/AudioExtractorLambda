@@ -14,9 +14,8 @@ phases:
   build:
     commands:
       - "echo Zipping Lambda function and dependencies"
-      - "zip -r function.zip ."  # Zips everything in the root directory
+      - "cd hello_world && zip -r ../function.zip . -x '*.git*' '.aws-sam/*' '.idea/*' 'events/*' 'tests/*'"  # Zips all files from `hello_world/` but not the directory itself
       - "zip -g function.zip appspec.yml"  # Adds `appspec.yml` to `function.zip`
-
   post_build:
     commands:
       - "echo Updating Lambda function code..."
